@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Microsoft Word temporary lock files
+~$*.docx
+~$*.xlsx
+
+# Private / Internal defense notes
+defense_script_reviewer.md
+
+# Working word drafts (keep only camera-ready PDF public)
+Final Paper/*.docx
+*.docx
+
+# Temporary or scratch artifacts
+scratch/
+*.log

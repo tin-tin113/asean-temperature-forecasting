@@ -1,0 +1,11 @@
+Country,Observed_Test_Months,Near_Zero_Test_Months_abs_lt_0_1,Min_Abs_Observed_Test_Value
+Brunei Darussalam,120,1,0.056
+Cambodia,120,6,0.013
+Indonesia,120,0,0.29
+Lao People's Democratic Republic,120,4,0.001
+Malaysia,120,0,0.14
+Myanmar,120,1,0.037
+Philippines,120,1,0.096
+Singapore,118,0,0.175
+Thailand,120,3,0.051
+Viet Nam,120,3,0.024
