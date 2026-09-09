@@ -70,7 +70,7 @@ Using historical **FAOSTAT Temperature Change on Land** monthly series (1961–2
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/<your-username>/asean-temperature-forecasting.git
+git clone https://github.com/tin-tin113/asean-temperature-forecasting.git
 cd asean-temperature-forecasting
 ```
 
