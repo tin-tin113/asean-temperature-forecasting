@@ -30,9 +30,10 @@ ehthumbs.db
 # Private / Internal defense notes
 defense_script_reviewer.md
 
-# Working word drafts (keep only camera-ready PDF public)
-Final Paper/*.docx
+# Paper files and drafts
+Final Paper/
 *.docx
+
 
 # Temporary or scratch artifacts
 scratch/

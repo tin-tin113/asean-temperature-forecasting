@@ -49,9 +49,6 @@ Using historical **FAOSTAT Temperature Change on Land** monthly series (1961–2
 ├── .gitignore                             # Git ignore configuration
 ├── LICENSE                                # MIT License
 │
-├── Final Paper/
-│   └── m29805-diasanta paper.pdf          # Final paper preprint (IEEE format)
-│
 └── Results / Benchmark CSVs/
     ├── tuned_avg_metrics_per_model.csv    # Table II: Aggregate regional rankings
     ├── tuned_best_model_per_country.csv   # Table III: Best model per country
