@@ -38,3 +38,7 @@ Final Paper/
 # Temporary or scratch artifacts
 scratch/
 *.log
+
+# Raw worldwide source archives
+Original Dataset/
+
