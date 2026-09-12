@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Framework: Design Science](https://img.shields.io/badge/Framework-Design%20Science%20Research-green.svg)](#-methodology)
+[![Framework: Design Science](https://img.shields.io/badge/Framework-Design%20Science%20Research-green.svg)](#-overview)
 [![Dataset: FAOSTAT](https://img.shields.io/badge/Data-FAOSTAT%20ET-orange.svg)](http://www.fao.org/faostat/en/#data/ET)
 
 Official open-source repository and reproducibility artifact for the research paper:  
@@ -63,6 +63,14 @@ Using historical **United Nations FAOSTAT Temperature Change on Land** monthly s
     ├── MODELS_AND_METRICS_EXPLAINED.md    # In-depth guide to algorithms, equations, & metrics
     └── STUDY_OVERVIEW_AND_CONCEPTS.md     # Complete study framework, DSR design, & defense notes
 ```
+
+---
+
+## 📚 In-Depth Documentation
+
+For comprehensive mathematical formulations, model derivations, and research background, consult the dedicated guides in the [`docs/`](docs/) directory:
+* 📘 **[Models & Metrics Explained](docs/MODELS_AND_METRICS_EXPLAINED.md)** — Architectural breakdowns of Holt-Winters, SARIMA, Prophet, and XGBoost; exact mathematical formulas for MAE, RMSE, $\text{MAPE}_{\varepsilon}$, sMAPE, and MASE; and analysis of metric stability for near-zero temperature anomalies.
+* 📗 **[Study Overview & Concepts](docs/STUDY_OVERVIEW_AND_CONCEPTS.md)** — Design Science Research (DSR) methodology, ASEAN geographic and climatic classifications, Singapore SLR spatial proxy derivation, and defense Q&A guide.
 
 ---
 
