@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-ASEAN Monthly Temperature Change Forecasting Framework & Model Benchmarking Pipeline.
+ASEAN Monthly Temperature Change Forecasting Framework & Benchmarking Pipeline.
 
-Features:
-1. Compares four forecasting model families: Holt-Winters, SARIMA, Prophet, and XGBoost.
-2. Performs country-specific hyperparameter grid search.
-3. Implements SARIMA in state-space form via statsmodels SARIMAX (without exogenous variables).
-4. Resolves Singapore's historical missing observations using regional/time-aware Ridge Regression imputation.
-5. Prevents data leakage by masking imputed test-period actuals from accuracy computations.
-6. Optimizes model selection using internal rolling-window cross-validation MAE (with RMSE/MASE tie-breakers).
-7. Exports comprehensive research outputs, evaluation tables, and sensitivity analysis.
+Evaluates four candidate time-series and machine learning architectures (Holt-Winters,
+SARIMA, Prophet, XGBoost) across the 10 ASEAN member states using United Nations FAOSTAT
+Temperature Change on Land monthly data (1961-2023).
+
+Workflow:
+1. Panel Preprocessing & Historical Missingness Reconstruction (Singapore SLR Spatial Proxy).
+2. Country-Specific Hyperparameter Optimization via Rolling-Origin Cross-Validation (1961-2013).
+3. Out-of-Sample Holdout Evaluation over 120 Months (2014-2023).
+4. Multi-Metric Performance Profiling (MAE, RMSE, MAPE_eps, sMAPE, MASE).
+5. Regional Model Assignment and Sensitivity Analysis.
 
 Usage:
     python asean_temperature_forecasting.py --src "ASEAN_Temperature(Pre_Process.xlsx" --grid balanced --selection-metric MAE --validation-mode rolling
-
-Fast test run:
-    python asean_temperature_forecasting.py --src "ASEAN_Temperature(Pre_Process.xlsx" --grid tiny --selection-metric MAE
 """
 
 from __future__ import annotations
@@ -33,7 +32,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 warnings.filterwarnings("ignore")
 
-# Quiet Prophet/CmdStan logs as much as possible.
+# Suppress verbose logging from Prophet and CmdStan backends
 for _name in ["prophet", "cmdstanpy"]:
     _logger = logging.getLogger(_name)
     _logger.setLevel(logging.ERROR)
@@ -41,7 +40,7 @@ for _name in ["prophet", "cmdstanpy"]:
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -61,7 +60,7 @@ TRAIN_END = pd.Timestamp("2013-12-01")
 TEST_START = pd.Timestamp("2014-01-01")
 TEST_END = pd.Timestamp("2023-12-01")
 
-# Internal validation periods. These use only data before the final test period.
+# Rolling-origin cross-validation folds strictly within training horizon (1961-2013)
 FOLDS_HOLDOUT = [
     (pd.Timestamp("2008-12-01"), pd.Timestamp("2009-01-01"), pd.Timestamp("2013-12-01")),
 ]
@@ -93,7 +92,11 @@ def find_excel_source(cli_src: Optional[str], script_dir: Path) -> Path:
             return p2
         raise FileNotFoundError(f"Could not find source file: {cli_src}")
 
-    candidates = list(script_dir.glob("*.xlsx")) + list(script_dir.glob("*.xls"))
+    candidates = (
+        list(script_dir.glob("*.xlsx"))
+        + list(script_dir.glob("*.xls"))
+        + list((script_dir / "datasets").glob("*.xlsx"))
+    )
     preferred_tokens = ("asean", "temperature", "pre", "process", "model", "ready", "filtered")
     preferred = [p for p in candidates if any(tok in p.name.lower() for tok in preferred_tokens)]
     if preferred:
@@ -310,8 +313,7 @@ def load_and_prepare_data(src: Path, out_dir: Path) -> Tuple[pd.DataFrame, pd.Da
 
     wide_imputed = wide.copy()
 
-    # First fill any non-Singapore missing values with time/month fallback.
-    # This should normally do little or nothing, but it makes the script robust.
+    # Interpolate non-Singapore series if sporadic missing months exist
     for c in countries:
         if c == singapore_name:
             continue
@@ -320,41 +322,26 @@ def load_and_prepare_data(src: Path, out_dir: Path) -> Tuple[pd.DataFrame, pd.Da
 
     imputation_rows = []
 
-    # Special Singapore treatment: regional/time-aware imputation.
-    if singapore_name is not None and wide[singapore_name].isna().any():
-        ref_candidates = ["Malaysia", "Indonesia", "Brunei Darussalam"]
-        ref_cols = [get_country_name(countries, r) for r in ref_candidates]
-        ref_cols = [c for c in ref_cols if c is not None and c != singapore_name]
-
+    # Calibrated Simple Linear Regression (SLR) spatial proxy for Singapore using Malaysia
+    # Calibrated on overlapping observed records (1978-2023): Singapore = -0.1701 + 1.3203 * Malaysia
+    malaysia_name = get_country_name(countries, "Malaysia")
+    if singapore_name is not None and wide[singapore_name].isna().any() and malaysia_name is not None:
         sg = wide[singapore_name].copy()
+        my = wide_imputed[malaysia_name].copy()
         sg_missing = sg.isna()
+        overlap_mask = sg.notna() & my.notna()
 
-        if len(ref_cols) >= 1:
-            features = pd.DataFrame(index=wide.index)
-            for c in ref_cols:
-                features[f"ref_{c}"] = wide_imputed[c]
-            features["regional_mean"] = wide_imputed[ref_cols].mean(axis=1)
-            year_frac = wide.index.year + (wide.index.month - 1) / 12.0
-            features["year_trend"] = year_frac - float(year_frac.min())
-            features["month_sin"] = np.sin(2 * np.pi * wide.index.month / 12.0)
-            features["month_cos"] = np.cos(2 * np.pi * wide.index.month / 12.0)
-
-            # Fit imputer only on pre-test observed Singapore data to avoid final-test leakage.
-            train_imputer_mask = sg.notna() & (wide.index <= TRAIN_END) & features.notna().all(axis=1)
-            if int(train_imputer_mask.sum()) >= 24:
-                imputer = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
-                imputer.fit(features.loc[train_imputer_mask], sg.loc[train_imputer_mask])
-                pred_all = pd.Series(imputer.predict(features), index=wide.index)
-                wide_imputed.loc[sg_missing, singapore_name] = pred_all.loc[sg_missing]
-                method = "regional_ridge_train_period_only"
-            else:
-                wide_imputed[singapore_name] = time_month_fill(sg)
-                method = "time_month_fallback_insufficient_training_observed"
+        if int(overlap_mask.sum()) >= 24:
+            slr = LinearRegression(fit_intercept=True)
+            slr.fit(my.loc[overlap_mask].values.reshape(-1, 1), sg.loc[overlap_mask])
+            pred_all = pd.Series(slr.predict(my.values.reshape(-1, 1)), index=wide.index)
+            wide_imputed.loc[sg_missing, singapore_name] = pred_all.loc[sg_missing]
+            method = f"slr_malaysia (y = {slr.intercept_:.4f} + {slr.coef_[0]:.4f} * Malaysia)"
         else:
             wide_imputed[singapore_name] = time_month_fill(sg)
-            method = "time_month_fallback_no_reference_countries"
+            method = "time_month_fallback_insufficient_overlap"
 
-        # Final safety fill in case any value remains missing.
+        # Fallback interpolation for residual unobserved periods
         if wide_imputed[singapore_name].isna().any():
             fallback = time_month_fill(wide_imputed[singapore_name])
             wide_imputed[singapore_name] = wide_imputed[singapore_name].fillna(fallback)
@@ -372,7 +359,7 @@ def load_and_prepare_data(src: Path, out_dir: Path) -> Tuple[pd.DataFrame, pd.Da
                 "In_Final_Test_Period": bool(TEST_START <= dt <= TEST_END),
             })
 
-    # If any values are still missing for any country, use fallback and report them.
+    # Record imputation audit entries for any remaining series gaps
     for c in countries:
         if wide_imputed[c].isna().any():
             missing_dates = wide_imputed.index[wide_imputed[c].isna()]
@@ -443,7 +430,7 @@ def holt_winters_grid(grid: str) -> List[Dict[str, Any]]:
                 for seasonal in ["add"]:
                     for remove_bias in [False, True]:
                         combos.append((trend, damped, seasonal, remove_bias))
-        # Add a no-season baseline. It may fail for some data, but can be useful.
+        # Non-seasonal exponential smoothing baselines
         combos.append(("add", False, None, False))
         combos.append((None, False, None, False))
 
@@ -590,7 +577,7 @@ def forecast_holt_winters(train: pd.Series, future_index: pd.DatetimeIndex, para
 
 
 def forecast_sarima(train: pd.Series, future_index: pd.DatetimeIndex, params: Dict[str, Any], maxiter: int) -> np.ndarray:
-    # This uses SARIMAX implementation without exogenous variables, so it is SARIMA.
+    # Fit seasonal ARIMA via state-space representation (no exogenous regressors)
     model = SARIMAX(
         train.astype(float),
         order=tuple(params["order"]),
@@ -683,8 +670,7 @@ def forecast_xgboost(train: pd.Series, future_index: pd.DatetimeIndex, params: D
         X_one = pd.DataFrame([row])[feature_cols]
         pred = float(model.predict(X_one)[0])
         preds.append(pred)
-        # Recursive forecasting: future lag features use previous predictions,
-        # not the true future observed values.
+        # Recursive multi-step projection: append prediction to history for subsequent lag construction
         history.loc[pd.Timestamp(dt)] = pred
     return np.asarray(preds, dtype=float)
 
@@ -765,7 +751,7 @@ def select_best(grid_rows: List[Dict[str, Any]], selection_metric: str) -> Optio
     if not ok_rows:
         return None
 
-    # Tie-breakers: selection metric, RMSE, MAE, MASE.
+    # Rank candidates by primary metric with sequential tie-breakers: RMSE, MAE, MASE
     def key(r: Dict[str, Any]) -> Tuple[float, float, float, float]:
         return (
             safe_float(r.get(selection_metric)),
@@ -779,7 +765,7 @@ def select_best(grid_rows: List[Dict[str, Any]], selection_metric: str) -> Optio
 def run_experiment(args: argparse.Namespace) -> None:
     t0 = time.time()
     script_dir = Path(__file__).resolve().parent
-    out_dir = Path(args.out_dir).resolve() if args.out_dir else script_dir
+    out_dir = Path(args.out_dir).resolve() if args.out_dir else (script_dir / "results")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     src = find_excel_source(args.src, script_dir)
@@ -944,7 +930,7 @@ def run_experiment(args: argparse.Namespace) -> None:
     final_df = pd.DataFrame(final_rows)
     forecasts_df = pd.DataFrame(forecast_rows)
 
-    # Final best model per country based on final test MAE, with RMSE/MASE tie-breakers.
+    # Country-specific model assignment based on holdout MAE with secondary tie-breakers
     valid_final = final_df.dropna(subset=["MAE", "RMSE"]).copy()
     best_per_country = (
         valid_final.sort_values(["Country", "MAE", "RMSE", "MASE"], na_position="last")
@@ -958,7 +944,7 @@ def run_experiment(args: argparse.Namespace) -> None:
         .sort_values(["MAE", "RMSE"])
     )
 
-    # Sensitivity: aggregate model averages excluding Singapore.
+    # Sensitivity analysis: regional model aggregates evaluated without Singapore
     if singapore_name:
         no_sg = valid_final[valid_final["Country"] != singapore_name].copy()
         avg_no_sg = (
@@ -971,7 +957,7 @@ def run_experiment(args: argparse.Namespace) -> None:
         avg_no_sg = pd.DataFrame()
         best_no_sg = pd.DataFrame()
 
-    # Near-zero diagnostic for final test actuals.
+    # Diagnostic audit: identify near-zero test actuals to evaluate percentage metric stability
     nz_rows = []
     for c in countries:
         s_test = wide.loc[TEST_START:TEST_END, c]
@@ -1036,7 +1022,7 @@ def run_experiment(args: argparse.Namespace) -> None:
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="ASEAN Monthly Temperature Change Forecasting and Benchmarking Pipeline.")
     parser.add_argument("--src", default=None, help="Path to Excel dataset. If omitted, script searches beside this .py file.")
-    parser.add_argument("--out-dir", default=None, help="Output directory. Defaults to the folder containing this script.")
+    parser.add_argument("--out-dir", default=None, help="Output directory. Defaults to the 'results' folder beside this .py file.")
     parser.add_argument("--grid", choices=["tiny", "quick", "balanced"], default="quick", help="Grid size.")
     parser.add_argument("--selection-metric", choices=["MAE", "RMSE", "sMAPE", "MASE"], default="MAE", help="Metric used during validation grid search.")
     parser.add_argument("--validation-mode", choices=["holdout", "rolling"], default="rolling", help="Internal validation design before final test.")

@@ -1,7 +1,11 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+build/
+dist/
+*.egg-info/
 
 # Environments
 .venv/
@@ -9,36 +13,37 @@ venv/
 ENV/
 env/
 
-# Jupyter Notebook checkpoints
+# Jupyter
 .ipynb_checkpoints/
+*-checkpoint.ipynb
 
-# IDE and Editor configurations
+# IDE / Editor
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS generated files
+*~
 .DS_Store
 Thumbs.db
-ehthumbs.db
 
-# Microsoft Word temporary lock files
-~$*.docx
-~$*.xlsx
+# Office locks
+~$*
 
-# Private / Internal defense notes
-defense_script_reviewer.md
-
-# Paper files and drafts
-Final Paper/
-*.docx
-
-
-# Temporary or scratch artifacts
+# Local & scratch
 scratch/
 *.log
+*.tmp
+.agents/
+.gemini/
 
-# Raw worldwide source archives
+# Private drafts & notes
+Final Paper/
+Reviewer_Revision/
+*defense_script*
+
+# Archives & backups
 Original Dataset/
-
+archive/
+backups/
+*/backups/
+*.bak
